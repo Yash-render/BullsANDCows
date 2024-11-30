@@ -7,7 +7,6 @@
 
 
 # Importing required libraries
-pip install matplotlib
 import streamlit as st
 import random
 import itertools
