@@ -150,175 +150,401 @@ def print_statistics(statistics: Dict[str, List], info_gain: float) -> None:
 
 
 # --- Streamlit App ---
-def main():
-    st.title("🐂🎯🐄 Bulls and Cows Game")
-    MAX_ATTEMPTS = 20 # Maximum number of attempts allowed
-
-    # restart button
-    if st.button("Restart Game"):
-        st.session_state.clear()
-        st.rerun()
-
-    # Initialize game state
-    if 'secret_number' not in st.session_state: # Check if the game state is initialized
-        st.session_state.secret_number, st.session_state.possible_secrets, st.session_state.statistics = initialize_game() # Initialize the game state
-        st.session_state.guesses = 0 # Initialize the number of guesses
-        st.session_state.remaining_attempts = MAX_ATTEMPTS # Initialize the remaining attempts
-        st.session_state.show_suggestion = False # Initialize show suggestion state
-        st.session_state.game_over = False # Initialize game over state
-        st.session_state.suggested_guess = None  # Initialize suggested guess
-
-    # Initialize entropies and mutual informations
-    if 'entropies' not in st.session_state:
-        st.session_state.entropies = []
-    if 'mutual_informations' not in st.session_state:
-        st.session_state.mutual_informations = []
-
-    # --- Sidebar Instructions ---
-    st.sidebar.header("Bulls and Cows Instructions")
-    st.sidebar.info("""
-    **Objective:**  
-    Guess the 4-digit secret number with all unique digits within the allowed attempts.
+def process_guess_callback():
+    guess_input = st.session_state.guess_input_widget
+    # Force strictly numeric behavior by stripping whitespace
+    guess_input = guess_input.strip()
     
-    **How to Play:**  
-    - Enter a 4-digit number with unique digits as your guess.
-    - After each guess, you'll receive:
-      - **Bulls:** Correct digits in the correct position.
-      - **Cows:** Correct digits but in the wrong position.
-    
-    **Tips:**  
-    Use the feedback to narrow down possible secret numbers. Good luck!
-    """)
+    if is_valid_guess(guess_input):
+        st.session_state.invalid_input = False
+        st.session_state.invalid_reason = ""
+        current_entropy = calculate_entropy(st.session_state.possible_secrets)
+        bulls, cows = compare_guess(st.session_state.secret_number, guess_input)
 
-    # --- Main Game Interface ---
-    st.write("I've generated a 4-digit secret number with no repeating digits. Try to guess it!")
-    st.header("Make a Guess")
-    guess_input = st.text_input("Enter your 4-digit guess with unique digits:", max_chars=4, key="guess_input") # Text input for the guess
-    submit_button = st.button("Submit Guess", disabled=st.session_state.get('game_over', False), key="submit_button") # Submit button
+        new_possible_secrets = filter_possible_secrets(st.session_state.possible_secrets, guess_input, bulls, cows)
+        info_gain = calculate_mutual_information(current_entropy, new_possible_secrets)
+        st.session_state.possible_secrets = new_possible_secrets
 
-
-    # Process the guess
-    if submit_button and guess_input and not st.session_state.game_over: # Check if the submit button is clicked and the guess is valid
-        if is_valid_guess(guess_input):
-            # Recalculate dependent variables
-            current_entropy = calculate_entropy(st.session_state.possible_secrets)
-            bulls, cows = compare_guess(st.session_state.secret_number, guess_input)
-
-            # Display results
-            st.write(f"**Bulls:** <span style='color:green;'>{bulls} 🐂</span>, **Cows:** <span style='color:orange;'>{cows} 🐄</span>", unsafe_allow_html=True)
-    
-
-            # --- Update possible secrets and calculate mutual information ---
-            new_possible_secrets = filter_possible_secrets(st.session_state.possible_secrets, guess_input, bulls, cows) # Filter possible secrets based on the guess
-            info_gain = calculate_mutual_information(current_entropy, new_possible_secrets)
-            st.session_state.possible_secrets = new_possible_secrets
-
-            # Update statistics BEFORE checking game end
-            update_statistics(
-                st.session_state.statistics,
-                st.session_state.guesses + 1, 
-                guess_input,
-                bulls,
-                cows,
-                current_entropy,
-                info_gain,
-                st.session_state.possible_secrets
-            )
-            st.session_state.entropies.append(current_entropy)
-            st.session_state.mutual_informations.append(info_gain)
-
-            # --- Update game state after processing guess ---
-            st.session_state.remaining_attempts -= 1
-            st.session_state.guesses += 1 
-
-            # --- Generate and show suggestion based on updated possible secrets ---
-            if st.session_state.remaining_attempts > 0 and not st.session_state.game_over: # Check if the game is not over
-                if st.session_state.remaining_attempts <= 5: # Show suggestion when remaining attempts are less than or equal to 5
-                    st.session_state.suggested_guess = suggest_guess(st.session_state.possible_secrets)
-                    if st.session_state.suggested_guess: # Display suggested guess if available
-                        st.info(f"**Suggested guess** ({st.session_state.remaining_attempts} attempts remaining): {st.session_state.suggested_guess}")
-                    else:
-                        st.warning("No more optimal guesses can be determined.")
-                else:
-                    st.session_state.suggested_guess = None  # Clear suggestion if not needed
-
-            # Check for win or lose AFTER updating everything
-            if bulls == 4: # Check if the guess is correct
-                st.success(f"Congratulations! You've guessed the secret number {st.session_state.secret_number} in {st.session_state.guesses} guesses.")
-                st.balloons()
-                st.snow()
-                st.session_state.game_over = True # Set game over state to True
-            elif st.session_state.remaining_attempts <= 0: # Check if the remaining attempts are exhausted
-                st.error(f"Game Over! You've reached the maximum {MAX_ATTEMPTS} attempts. The secret number was {st.session_state.secret_number}.")
-                st.session_state.game_over = True
-            elif not st.session_state.possible_secrets and bulls != 4: # Check if there are no possible secrets left
-                    st.error("No possible secrets left! Something went wrong.")
-                    st.session_state.game_over = True
-            
-            # Update remaining attempts display
-            st.markdown(f"<h3 style='text-align: center; color: red;'>Remaining attempts: {st.session_state.remaining_attempts}</h3>", unsafe_allow_html=True)
-
-        else:
-            st.warning("Invalid input. Please enter a 4-digit number with unique digits (e.g., 1234).") # Display warning for invalid input
-
-
-
-    # --- Statistics Table ---
-    st.header("Statistics Table")
-    if st.session_state.statistics['total_guesses'] > 0: # Check if there are any guesses
-        data = []
-        total_info_gain = 0
-        for i in range(st.session_state.statistics['total_guesses']):
-            info_gain = st.session_state.statistics['information_gains'][i] # Get information gain
-            total_info_gain += info_gain
-            data.append([
-                i+1,  # Guess number
-                st.session_state.statistics['guess_list'][i], # Guess
-                st.session_state.statistics['bulls'][i], # Add bulls
-                st.session_state.statistics['cows'][i],  # Add cows
-                f"{st.session_state.statistics['entropy_values'][i]:.4f}", # Entropy
-                f"{info_gain:.4f}",
-                st.session_state.statistics['remaining_possibilities'][i]
-            ])
-        
-        # Display average information gain
-        avg_info_gain = total_info_gain / st.session_state.statistics['total_guesses'] if st.session_state.statistics['total_guesses'] else 0 
-        st.write(f"**Average Information Gain:** {avg_info_gain:.4f} bits")
-
-        # Create DataFrame for statistics to display in a table
-        df = pd.DataFrame(
-            data,
-            columns=[
-                'Guess #',
-                'Guess',
-                'Bulls',
-                'Cows', 
-                'Entropy',
-                'Information Gain',
-                'Remaining Possibilities'
-            ]
+        update_statistics(
+            st.session_state.statistics,
+            st.session_state.guesses + 1, 
+            guess_input,
+            bulls,
+            cows,
+            current_entropy,
+            info_gain,
+            st.session_state.possible_secrets
         )
-        st.dataframe(df)
+        st.session_state.entropies.append(current_entropy)
+        st.session_state.mutual_informations.append(info_gain)
+
+        st.session_state.remaining_attempts -= 1
+        st.session_state.guesses += 1 
+
+        if st.session_state.remaining_attempts > 0 and not st.session_state.game_over:
+            if st.session_state.remaining_attempts <= 5:
+                st.session_state.suggested_guess = suggest_guess(st.session_state.possible_secrets)
+            else:
+                st.session_state.suggested_guess = None
+
+        if bulls == 4:
+            st.session_state.game_over = True
+            st.session_state.is_victory = True
+        elif st.session_state.remaining_attempts <= 0:
+            st.session_state.game_over = True
+            st.session_state.is_loss = True
+        elif not st.session_state.possible_secrets and bulls != 4:
+            st.session_state.game_over = True
+            st.session_state.is_error = True
+    else:
+        st.session_state.invalid_input = True
 
 
+def main():
+    st.set_page_config(page_title="Bulls & Cows", layout="wide", initial_sidebar_state="expanded")
 
-    # --- Visualization ---
-    st.header("Entropy and Mutual Information Plot")
-    if st.session_state.entropies and st.session_state.mutual_informations: # Check if there are entropy and mutual information values
-        fig, ax1 = plt.subplots(figsize=(10, 5)) # Create a plot with 2 y-axes
+    st.markdown("""
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;800&family=Outfit:wght@300;400;600;800&display=swap');
 
-        ax1.set_xlabel("Guesses")
-        ax1.set_ylabel("Entropy (bits)", color="tab:blue")
-        ax1.plot(st.session_state.entropies, label="Entropy", color="tab:blue", marker="o")
-        ax1.tick_params(axis="y", labelcolor="tab:blue") # Set y-axis color
+html, body, [class*="css"] {
+    font-family: 'Inter', sans-serif !important;
+    background-color: #050505 !important;
+    color: #E0E0E0 !important;
+}
 
-        ax2 = ax1.twinx() # Create a second y-axis
-        ax2.set_ylabel("Mutual Information (bits)", color="tab:orange") # Set y-axis label
-        ax2.bar(range(1, len(st.session_state.mutual_informations) + 1), st.session_state.mutual_informations, alpha=0.6, color="tab:orange", label="Mutual Information") # Plot mutual information as a bar chart
-        ax2.tick_params(axis="y", labelcolor="tab:orange")
+header {
+    background: transparent !important;
+    border-bottom: none !important;
+}
+#MainMenu {visibility: hidden;}
+footer {visibility: hidden;}
+.block-container { padding-top: 3rem !important; }
 
-        fig.tight_layout() # Adjust layout
-        st.pyplot(fig) # Display the plot. pyplot() is a Streamlit function to display Matplotlib plots
+/* Sidebar styling */
+[data-testid="stSidebar"] {
+    background-color: #080808 !important;
+    border-right: 1px solid rgba(212, 175, 55, 0.1);
+}
+[data-testid="stSidebar"] * {
+    color: #AAA !important;
+}
+
+.stApp {
+    background: radial-gradient(circle at 50% -20%, #1a1a14 0%, #050505 80%);
+}
+
+/* Professional Glass Panel for Streamlit Columns */
+[data-testid="column"] > div {
+    background: rgba(255, 255, 255, 0.015) !important;
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    border: 1px solid rgba(255, 255, 255, 0.05) !important;
+    border-radius: 20px !important;
+    padding: 35px !important;
+    box-shadow: 0 10px 40px rgba(0,0,0,0.8) !important;
+    transition: all 0.3s ease;
+}
+[data-testid="column"]:hover > div {
+    border-color: rgba(212, 175, 55, 0.2) !important;
+}
+
+.main-title {
+    font-family: 'Outfit', sans-serif;
+    font-size: 3.5rem;
+    font-weight: 800;
+    text-align: center;
+    background: linear-gradient(135deg, #FFF 0%, #D4AF37 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    margin-top: 10px;
+    margin-bottom: 30px;
+    letter-spacing: -1px;
+    width: 100%;
+}
+
+[data-testid="stTextInput"] input, 
+div[data-baseweb="input"] input,
+.stTextInput input {
+    background: rgba(0, 0, 0, 0.8) !important;
+    border: 2px solid rgba(212, 175, 55, 0.4) !important;
+    color: #D4AF37 !important;
+    font-size: 5rem !important;
+    letter-spacing: 40px !important;
+    text-align: center !important;
+    border-radius: 24px !important;
+    padding: 0 !important;
+    height: 180px !important;
+    line-height: 180px !important;
+    font-family: 'Outfit', monospace !important;
+    font-weight: 800 !important;
+    transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+    box-shadow: inset 0 2px 40px rgba(0,0,0,0.9) !important;
+    text-shadow: 0 0 20px rgba(212, 175, 55, 0.6) !important;
+}
+
+[data-testid="stTextInput"] div[data-baseweb="input"],
+[data-testid="stTextInput"] div[data-baseweb="base-input"] {
+    background: transparent !important;
+    border: none !important;
+    height: 180px !important;
+}
+
+[data-testid="stTextInput"] input:focus,
+div[data-baseweb="input"] input:focus {
+    border-color: #D4AF37 !important;
+    background: rgba(10, 10, 5, 0.9) !important;
+    box-shadow: inset 0 2px 40px rgba(0,0,0,0.9), 0 0 50px rgba(212, 175, 55, 0.2) !important;
+    transform: scale(1.02);
+}
+
+div[data-testid="stFormSubmitButton"] button {
+    background: linear-gradient(135deg, #D4AF37 0%, #AA8C2C 100%) !important;
+    color: #000 !important;
+    border: none !important;
+    padding: 18px 30px !important;
+    font-family: 'Outfit', sans-serif !important;
+    font-size: 1.2rem !important;
+    font-weight: 800 !important;
+    border-radius: 16px !important;
+    width: 100% !important;
+    text-transform: uppercase !important;
+    letter-spacing: 2px !important;
+    transition: all 0.3s ease !important;
+    margin-top: 15px !important;
+    box-shadow: 0 4px 15px rgba(212, 175, 55, 0.1) !important;
+}
+div[data-testid="stFormSubmitButton"] button:hover {
+    transform: translateY(-2px) !important;
+    box-shadow: 0 10px 25px rgba(212, 175, 55, 0.3) !important;
+}
+
+div[data-testid="stButton"] button {
+    background: transparent !important;
+    color: #666 !important;
+    border: 1px solid #333 !important;
+    padding: 15px 20px !important;
+    font-family: 'Outfit', sans-serif !important;
+    font-size: 0.9rem !important;
+    font-weight: 800 !important;
+    border-radius: 16px !important;
+    width: 100% !important;
+    text-transform: uppercase !important;
+    letter-spacing: 2px !important;
+    transition: all 0.3s ease !important;
+}
+div[data-testid="stButton"] button:hover {
+    color: #D4AF37 !important;
+    border-color: #D4AF37 !important;
+    background: rgba(212, 175, 55, 0.05) !important;
+}
+
+.stat-box {
+    text-align: center;
+    padding: 10px;
+    margin-bottom: 20px;
+}
+.stat-value {
+    font-family: 'Outfit', sans-serif;
+    font-size: 4.5rem;
+    font-weight: 800;
+    line-height: 1;
+    background: linear-gradient(to bottom, #FFF, #555);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+}
+.stat-value.gold {
+    background: linear-gradient(to bottom, #F3E5AB, #D4AF37);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+}
+.stat-label {
+    font-size: 0.8rem;
+    color: #555;
+    text-transform: uppercase;
+    letter-spacing: 3px;
+    margin-top: 5px;
+    font-weight: 600;
+}
+
+.guess-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 20px 25px;
+    background: rgba(255,255,255,0.015);
+    border-radius: 16px;
+    margin-bottom: 12px;
+    border: 1px solid rgba(255,255,255,0.03);
+    transition: background 0.3s, transform 0.3s;
+}
+.guess-row:hover {
+    transform: translateX(5px);
+    background: rgba(255,255,255,0.03);
+    border-color: rgba(212, 175, 55, 0.2);
+}
+.digit-container {
+    display: flex;
+    gap: 10px;
+}
+.digit-box {
+    width: 50px;
+    height: 60px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: #000;
+    border: 1px solid #222;
+    border-radius: 10px;
+    font-family: 'Outfit', monospace;
+    font-size: 2rem;
+    font-weight: 600;
+    color: #FFF;
+    box-shadow: inset 0 2px 10px rgba(0,0,0,0.8);
+}
+.visual-feedback {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+}
+.dot-bull { font-size: 1.5rem; }
+.dot-cow { font-size: 1.5rem; }
+
+.stTabs [data-baseweb="tab-list"] { gap: 30px; }
+.stTabs [data-baseweb="tab"] { color: #555; text-transform: uppercase; letter-spacing: 2px; font-weight: 600; }
+.stTabs [aria-selected="true"] { color: #D4AF37 !important; }
+.stTabs [data-baseweb="tab-border"] { background-color: #D4AF37 !important; }
+
+@keyframes slideDown { 0% { opacity: 0; transform: translateY(-10px); } 100% { opacity: 1; transform: translateY(0); } }
+</style>
+""", unsafe_allow_html=True)
+
+    MAX_ATTEMPTS = 20
+
+    if 'secret_number' not in st.session_state:
+        st.session_state.secret_number, st.session_state.possible_secrets, st.session_state.statistics = initialize_game()
+        st.session_state.guesses = 0
+        st.session_state.remaining_attempts = MAX_ATTEMPTS
+        st.session_state.game_over = False
+        st.session_state.is_victory = False
+        st.session_state.is_loss = False
+        st.session_state.is_error = False
+        st.session_state.invalid_input = False
+        st.session_state.suggested_guess = None
+        st.session_state.entropies = []
+        st.session_state.mutual_informations = []
+        st.session_state.played_win_animation = False
+
+    if st.session_state.is_victory and not st.session_state.played_win_animation:
+        st.balloons()
+        st.session_state.played_win_animation = True
+
+    with st.sidebar:
+        st.markdown("<h2 style='color:#D4AF37; font-family:Outfit;'>HOW TO PLAY</h2>", unsafe_allow_html=True)
+        st.markdown("""
+        **Objective**
+        Crack the 4-digit code. All digits are unique (e.g., 1234).
+        
+        **Feedback Rules**
+        - <span style='color:#D4AF37;'>●</span> **Bulls**: Correct digit in the correct spot.
+        - <span style='color:#666;'>○</span> **Cows**: Correct digit in the wrong spot.
+        
+        **Attempts**
+        You have 20 attempts to solve the sequence.
+        """, unsafe_allow_html=True)
+
+    st.markdown("<div class='main-title'>BULLS & COWS</div>", unsafe_allow_html=True)
+
+    col1, spacer, col2 = st.columns([1.2, 0.1, 1.8])
+
+    with col1:
+        s1, s2 = st.columns(2)
+        with s1:
+            st.markdown(f"<div class='stat-box'><div class='stat-value gold'>{st.session_state.remaining_attempts}</div><div style='color:#666; font-size:0.75rem; letter-spacing:2px; font-weight:800; text-transform:uppercase;'>Attempts Left</div></div>", unsafe_allow_html=True)
+        with s2:
+            current_entropy_val = calculate_entropy(st.session_state.possible_secrets)
+            st.markdown(f"<div class='stat-box'><div class='stat-value'>{current_entropy_val:.1f}</div><div style='color:#666; font-size:0.75rem; letter-spacing:2px; font-weight:800; text-transform:uppercase;'>Entropy Bits</div></div>", unsafe_allow_html=True)
+        
+        with st.form("guess_form", clear_on_submit=True):
+            st.text_input("GUESS INPUT", max_chars=4, placeholder="0000", label_visibility="collapsed", key="guess_input_widget")
+            st.form_submit_button("Initiate Sequence", width="stretch", disabled=st.session_state.game_over, on_click=process_guess_callback)
+            
+        if st.session_state.invalid_input:
+            st.markdown("<p style='color: #E74C3C; text-align: center; margin-top: 15px; font-weight: 600; font-size:0.85rem; letter-spacing:1px;'>ERROR: SEQUENCE MUST CONTAIN 4 UNIQUE DIGITS.</p>", unsafe_allow_html=True)
+            
+        if st.session_state.remaining_attempts <= 5 and not st.session_state.game_over:
+            if st.session_state.suggested_guess:
+                st.markdown(f"<div style='margin-top: 30px; padding: 25px; border-left: 2px solid #D4AF37; background: rgba(212,175,55,0.05);'><div style='font-size: 0.75rem; color: #D4AF37; text-transform: uppercase; letter-spacing: 3px; font-weight: 800; margin-bottom: 8px;'>AI Optimal Protocol</div><div style='font-family: Outfit, monospace; font-size: 2.5rem; color: #FFF; letter-spacing: 8px; font-weight: 600;'>{st.session_state.suggested_guess}</div></div>", unsafe_allow_html=True)
+
+        if st.session_state.game_over:
+            st.markdown("<br>", unsafe_allow_html=True)
+            if st.session_state.is_victory:
+                st.markdown(f"<div style='text-align:center; color:#D4AF37; font-size:1.8rem; font-weight:800; font-family: Outfit; letter-spacing: 2px;'>ACCESS GRANTED: {st.session_state.secret_number}</div>", unsafe_allow_html=True)
+            elif st.session_state.is_loss:
+                st.markdown(f"<div style='text-align:center; color:#E74C3C; font-size:1.8rem; font-weight:800; font-family: Outfit; letter-spacing: 2px;'>PROTOCOL OVERRIDE: {st.session_state.secret_number}</div>", unsafe_allow_html=True)
+        
+        if st.button("RESTART GAME", width="stretch"):
+            st.session_state.clear()
+            st.rerun()
+
+    with col2:
+        tab1, tab2 = st.tabs(["Sequence History", "Data Telemetry"])
+        
+        with tab1:
+            st.markdown("<br>", unsafe_allow_html=True)
+            if st.session_state.statistics['total_guesses'] > 0:
+                html_history = ""
+                for i in range(st.session_state.statistics['total_guesses'] - 1, -1, -1):
+                    g_num = st.session_state.statistics['guess_list'][i]
+                    b_count = st.session_state.statistics['bulls'][i]
+                    c_count = st.session_state.statistics['cows'][i]
+                    
+                    digits_html = "".join([f"<div class='digit-box'>{d}</div>" for d in g_num])
+                    
+                    bulls_dots = "".join(["<div class='dot-bull'></div>" for _ in range(b_count)])
+                    cows_dots = "".join(["<div class='dot-cow'></div>" for _ in range(c_count)])
+                    
+                    html_history += f"""
+                    <div class='guess-row' style='animation: slideDown 0.4s ease-out backwards; animation-delay: {((st.session_state.statistics['total_guesses'] - 1) - i) * 0.05}s;'>
+                        <div style='color: #222; font-family: Outfit; font-weight: 800; font-size: 1.2rem; width: 30px;'>{i+1}</div>
+                        <div style='display:flex; gap:10px; flex-grow:1; margin-left:15px;'>{digits_html}</div>
+                        <div style='display:flex; gap:20px; background:rgba(0,0,0,0.3); padding:10px 25px; border-radius:12px; border:1px solid rgba(255,255,255,0.03); align-items:center;'>
+                            <div class='visual-feedback' style='font-size:1.5rem; gap:10px;'>{b_count} 🐂</div>
+                            <div style='width:1px; height:25px; background:rgba(255,255,255,0.1);'></div>
+                            <div class='visual-feedback' style='font-size:1.5rem; gap:10px;'>{c_count} 🐄</div>
+                        </div>
+                    </div>
+                    """
+                st.markdown(html_history, unsafe_allow_html=True)
+            else:
+                st.markdown("<div style='text-align:center; padding: 120px 20px; opacity:0.6;'><div style='font-family: Outfit; font-weight: 800; font-size: 2.5rem; margin-bottom: 10px; color: #D4AF37;'>AWAITING INPUT</div><div style='letter-spacing: 3px; font-size: 0.85rem; text-transform: uppercase; color: #E0E0E0;'>Telemetry will initialize upon first sequence</div></div>", unsafe_allow_html=True)
+                
+        with tab2:
+            if st.session_state.statistics['total_guesses'] > 0:
+                st.markdown("<br>", unsafe_allow_html=True)
+                fig, ax1 = plt.subplots(figsize=(8, 4))
+                fig.patch.set_alpha(0.0)
+                ax1.patch.set_alpha(0.0)
+                ax1.set_xlabel("SEQUENCE", color="#555", fontweight="bold", fontsize=9)
+                ax1.set_ylabel("ENTROPY", color="#D4AF37", fontweight="bold", fontsize=9)
+                ax1.plot(st.session_state.entropies, color="#D4AF37", marker="o", linewidth=2.5, markersize=7, markerfacecolor="#050505")
+                ax1.tick_params(colors="#333")
+                ax1.grid(color='#222', linestyle='-', linewidth=1)
+                ax2 = ax1.twinx()
+                ax2.bar(range(1, len(st.session_state.mutual_informations) + 1), st.session_state.mutual_informations, alpha=0.15, color="#FFF")
+                ax2.axis('off')
+                for s in ax1.spines.values(): s.set_visible(False)
+                st.pyplot(fig)
+                with st.expander("RAW DIAGNOSTICS"):
+                    data = []
+                    for i in range(st.session_state.statistics['total_guesses']):
+                        info_gain = st.session_state.statistics['information_gains'][i]
+                        data.append([i+1, st.session_state.statistics['guess_list'][i], st.session_state.statistics['bulls'][i], st.session_state.statistics['cows'][i], f"{st.session_state.statistics['entropy_values'][i]:.4f}", f"{info_gain:.4f}", st.session_state.statistics['remaining_possibilities'][i]])
+                    st.dataframe(pd.DataFrame(data, columns=['ID', 'Code', 'Bulls', 'Cows', 'Entropy', 'Info Gain', 'Remaining']), width="stretch", hide_index=True)
+            else:
+                st.markdown("<div style='text-align:center; padding: 120px 20px; opacity:0.6;'><div style='font-family: Outfit; font-weight: 800; font-size: 2.5rem; margin-bottom: 10px; color: #D4AF37;'>NO DATA</div><div style='letter-spacing: 3px; font-size: 0.85rem; text-transform: uppercase; color: #E0E0E0;'>Execute sequence to view telemetry</div></div>", unsafe_allow_html=True)
+
 
 if __name__ == "__main__":
     main()
+
