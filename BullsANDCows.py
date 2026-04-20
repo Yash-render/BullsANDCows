@@ -416,6 +416,34 @@ div[data-testid="stButton"] button:hover {
 .stTabs [data-baseweb="tab-border"] { background-color: #D4AF37 !important; }
 
 @keyframes slideDown { 0% { opacity: 0; transform: translateY(-10px); } 100% { opacity: 1; transform: translateY(0); } }
+
+/* Responsive Adjustments */
+@media (max-width: 1200px) {
+    .main-title { font-size: 2.8rem; margin-bottom: 20px; }
+    [data-testid="stTextInput"] input, div[data-baseweb="input"] input, .stTextInput input { font-size: 4rem !important; letter-spacing: 30px !important; height: 140px !important; line-height: 140px !important; }
+    [data-testid="stTextInput"] div[data-baseweb="input"], [data-testid="stTextInput"] div[data-baseweb="base-input"] { height: 140px !important; }
+    .stat-value { font-size: 3.5rem; }
+}
+
+@media (max-width: 768px) {
+    .main-title { font-size: 2.2rem; }
+    [data-testid="stTextInput"] input, div[data-baseweb="input"] input, .stTextInput input { font-size: 3rem !important; letter-spacing: 20px !important; height: 100px !important; line-height: 100px !important; border-radius: 16px !important; }
+    [data-testid="stTextInput"] div[data-baseweb="input"], [data-testid="stTextInput"] div[data-baseweb="base-input"] { height: 100px !important; }
+    .stat-value { font-size: 2.8rem; }
+    .guess-row { padding: 15px; }
+    .digit-box { width: 40px; height: 48px; font-size: 1.5rem; }
+    .dot-bull, .dot-cow { font-size: 1.2rem; }
+    [data-testid="column"] > div { padding: 20px !important; }
+}
+
+@media (max-width: 480px) {
+    .main-title { font-size: 1.8rem; }
+    [data-testid="stTextInput"] input, div[data-baseweb="input"] input, .stTextInput input { font-size: 2.2rem !important; letter-spacing: 12px !important; height: 80px !important; line-height: 80px !important; }
+    [data-testid="stTextInput"] div[data-baseweb="input"], [data-testid="stTextInput"] div[data-baseweb="base-input"] { height: 80px !important; }
+    .stat-value { font-size: 2.2rem; }
+    .guess-row { padding: 10px; flex-direction: column; gap: 10px; }
+    .digit-box { width: 35px; height: 42px; font-size: 1.2rem; }
+}
 </style>
 """, unsafe_allow_html=True)
 
