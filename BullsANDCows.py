@@ -495,7 +495,7 @@ div[data-testid="stButton"] button:hover {
         
         with st.form("guess_form", clear_on_submit=True):
             st.text_input("GUESS INPUT", max_chars=4, placeholder="0000", label_visibility="collapsed", key="guess_input_widget")
-            st.form_submit_button("Initiate Sequence", width="stretch", disabled=st.session_state.game_over, on_click=process_guess_callback)
+            st.form_submit_button("GUESS NUMBER", width="stretch", disabled=st.session_state.game_over, on_click=process_guess_callback)
             
         if st.session_state.invalid_input:
             st.markdown("<p style='color: #E74C3C; text-align: center; margin-top: 15px; font-weight: 600; font-size:0.85rem; letter-spacing:1px;'>ERROR: SEQUENCE MUST CONTAIN 4 UNIQUE DIGITS.</p>", unsafe_allow_html=True)
